@@ -1,14 +1,6 @@
 * [Overview] (#bnarly)
 * [API] (#bnarly-api)
-    * [Configuration] (#configuration)
-    * [Utils] (#utils)
-    * [Setup] (#setup)
-    * [Candy] (#candy)
-    * [Symbol Resolution] (#symbol-resolution)
-    * [Breakpoints] (#breakpoints)
-    * [Memory Read] (#memory-read)
-    * [Memory Write] (#memory-write)
-    * [Core] (#core)
+* [API Index] (#bnarly-api-index)
 
 ---
 
@@ -66,7 +58,7 @@ bNarly API
 Configuration
 -------------
 
-#### `setMainWindow(window)`
+#### `setMainWindow(win)`
 
 Set the window that the debugger will be attached to.
 
@@ -159,13 +151,13 @@ A heap event is of the form:
 }
 ```
 
-#### `getObjectPtr()`
+#### `getObjectPtr(obj, isOnlyObjName)`
 
 Return a pointer to the given object. If `isOnlyName` is true, the obj is assumed to be a string
 and will be evaluated in the window that `setMainWindow(win)` was set to.
 
 
-#### `getObjectSize()`
+#### `getObjectSize(ptr)`
 
 Return the size of the memory allocation referenced by ptr. An
 object is returned with at least the two members:
@@ -363,3 +355,63 @@ execution will automatically be resumed.
 #### `shell(cmd)`
 
 Run `cmd` without waiting for the created process to exit
+
+bNarly API Index
+================
+
+* [Configuration] (#configuration)
+    * [setMainWindow] (#setmainwindowwin)
+    * [setUseSymbolCache] (#setusesymbolcachetruefalse)
+    * [populateSymbolCache] (#populatesymbolcache)
+* [Utils] (#utils)
+    * [int3] (#int3)
+    * [log] (#logmsg)
+* [Setup] (#setup)
+    * [getWindbgBreakpoint] (#getwindbgbreakpoint)
+    * [getSymbolServerLocations] (#getsymbolserverlocations)
+    * [getBrowserVersion] (#getbrowserversion)
+    * [getBrowserName] (#getbrowserName)
+    * [isConnected] (#isconnected)
+* [Candy] (#candy)
+    * [evalExpr] (#evalexprexpression)
+    * [startHeapTracking] (#startheaptracking)
+    * [stopHeapTracking] (#stopheaptracking)
+    * [getObjectPtr] (#getobjectptrobj-isonlyobjname)
+    * [getObjectSize] (#getobjectsizeptr)
+* [Symbol Resolution] (#symbol-resolution)
+    * [getSymbol] (#getsymboladdr)
+    * [getSymbols] (#getsymbolsaddrs)
+* [Breakpoints] (#breakpoints)
+    * [setBreakpoint] (#setbreakpointaddr-commands-type)
+    * [clearBreakpoint] (#clearbreakpointbpid)
+* [Memory Read] (#memory-read)
+    * 	// string functions
+    * [da] (#daaddress-brokenup-limit)
+    * [du] (#duaddress-brokenup-limit)
+    * 	// option to resolve symbols
+    * [dd] (#ddaddress-num-symlookup)
+    * [dp] (#dpaddress-num-symlookup)
+    * [ddp] (#ddpaddress-num-symlookup)
+    * [dpp] (#dppaddress-num-symlookup)
+    * 	// single memory access
+    * [by] (#byaddress)
+    * [wo] (#woaddress)
+    * [dwo] (#dwoaddress)
+    * [qwo] (#qwoaddress)
+    * [poi] (#poiaddress)
+    * 	// raw memory dump
+    * [db] (#dbaddress-num)
+    * [bytes] (#bytesaddress-num)
+    * [words] (#wordsaddress-num)
+    * [dwords] (#dwordsaddress-num)
+    * [qwords] (#qwordsaddress-num)
+* [Memory Write] (#memory-write)
+    * [eb] (#ebaddr-val1-val2-)
+    * [ew] (#ewaddr-val1-val2-)
+    * [ed] (#edaddr-val1-val2-)
+    * [eq] (#eqaddr-val1-val2-)
+* [Core] (#core)
+    * [run] (#run)
+    * [evalRaw] (#evalrawcmd1-cmd2-)
+    * [shell] (#shell)
+
