@@ -1,10 +1,24 @@
+* [Overview] (#bnarly)
+* [API] (#bnarly-api)
+    * [Configuration] (#configuration)
+    * [Utils] (#utils)
+    * [Setup] (#setup)
+    * [Candy] (#candy)
+    * [Symbol Resolution] (#symbol-resolution)
+    * [Breakpoints] (#breakpoints)
+    * [Memory Read] (#memory-read)
+    * [Memory Write] (#memory-write)
+    * [Core] (#core)
+
+---
+
 bNarly
 ======
 
 bNarly (browser narly) is a browser exploitation/exploration tool. bNarly is essentially a windbg <--> javascript bridge.
 
-Tested browsers
-------------------
+Tested Browsers
+---------------
 
 * IE 10, 9?
 * Firefox 25
@@ -78,8 +92,8 @@ Force execution to pause
 Print the message and continue. This method should be safe for ANY message content
 without needing to escape anything.
 
-Setup Functions
----------------
+Setup
+-----
 
 #### `getWindbgBreakpoint()`
 
