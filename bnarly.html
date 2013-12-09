@@ -1,0 +1,712 @@
+<!doctype html>
+<html>
+	<head>
+		<style>
+			#windbg_breakpoint {
+				width: 500px;
+				height: 300px;
+			};
+		</style>
+	
+		<script src="jquery.min.js" type="text/javascript"></script>
+		<script src="bnarly.js" type="text/javascript"></script>
+		
+		<script>
+			function runCalc() {
+				bnarly.shell("calc.exe");
+			};
+			
+			function showWindbgBreakpoint() {
+				var bp = bnarly.getWindbgBreakpoint();
+				if(!bp) {
+					showSupportedBrowsers();
+				}
+				$("#windbg_breakpoint").text(bp);
+			};
+			
+			function showSupportedBrowsers() {
+				$("#windbg_breakpoint").text("SUPPORTED BROWSERS:");
+			};
+			
+			var childWindow = window;
+			childWindow.opener = window;
+			var currSlide = null;
+			var slideIdx = -1;
+			var setupSlides = [];
+			var showFn = "show";
+			var hideFn = "hide";
+			var duration = 300;
+			function callIt(o) {
+				if(o.done) {
+					o.done();
+				}
+			}
+			function slideChange(type) {
+				var obj = currSlide;
+				if(!obj) {
+					obj = {};
+					obj[hideFn] = callIt;
+				}
+				currSlide = setupSlides[type == "next" ? ++slideIdx : --slideIdx];
+
+				if(slideIdx >= setupSlides.length) {
+					$(".intro-slides")[hideFn]({
+						done:function(){
+							$(".main-box")[showFn]({
+								done:initMain()
+							})
+						}
+					});
+					return;
+				}
+
+				if(currSlide.hasClass("new-window-content")) {
+					handleNewWindowSetup();
+				} else if(currSlide.hasClass("breakpoints-content")) {
+					handleBreakpointsContentSetup();
+				} else if(currSlide.hasClass("prepopulate-cache")) {
+					handleCurrSlideSetup();
+				}
+
+				obj[hideFn]({done:function(){currSlide[showFn]()}});
+			}
+
+			var connectionInterval = null;
+			var timeoutCount = 2;
+			function handleBreakpointsContentSetup() {
+				connectionInterval = setInterval(function() {
+					timeoutCount++;
+					var statusText = $(".waiting-for-connection");
+					if(bnarly.isConnected()) {
+						statusText.text("CONNECTED!");
+						clearInterval(connectionInterval);
+					} else {
+						var dots = "";
+						while(dots.length < (timeoutCount % 3)+1) {
+							dots += ".";
+						}
+						var missing = 3 - dots.length;
+						for(var i = 0; i < missing; i++) {
+							dots += "&nbsp;";
+						}
+						statusText.html("Waiting for connection" + dots);
+					}
+				}, 1000);
+			}
+
+			function handleCurrSlideSetup() {
+				$("#prepopulate-button").click(function() {
+					bnarly.populateSymbolCache();
+				});
+			}
+
+			function handleNewWindowSetup() {
+				$("#new-window-open-button").click(function() {
+					var newWindowSrc = $("#new-window-src").val();
+					childWindow = window.open(newWindowSrc, "BNARLY SPAWN", "width=10,height=10");
+					bnarly.setMainWindow(childWindow);
+				});
+			}
+
+			function initMain() {
+				$(".inspect").addClass("selectedTab");
+				$(".inspect-content").show();
+
+				$(".tab").click(function(){
+					$(".tab").removeClass("selectedTab");
+					$(this).addClass("selectedTab");
+					$(".tab-content").hide();
+					$(".tab-content."+this.id+"-content").show();
+				});
+
+				initEvalTab();
+				initInspectTab();
+				initMemoryTab();
+			}
+
+			function viewTab(whichTab) {
+				$("#" + whichTab).click();
+			}
+
+			function hex(num, width) {
+				if(width == undefined) { width = 8; }
+				var res = num.toString(16);
+				while(res.length < width) {
+					res = "0" + res;
+				}
+				return res;
+			}
+
+			function memLink(addr, text) {
+				return "<a href='#action=memory&addr="+addr+"' class='memory-link' addr='"+addr+"'>"+text+"</a>";
+			}
+
+			function createDataTable(memDump) {
+				var table = $("<table><tr><th>addr</th><th>val</th></tr></table>");
+				table.addClass("memory-table");
+				for(var i = 0; i < memDump.length; i++) {
+					var info = memDump[i];
+					var row = $("<tr><td>"+memLink(info.addr, hex(info.addr))+"</td><td>"+info.val+"</td></tr>");
+					table.append(row);
+				}
+				return table;
+			}
+
+			function createMemoryTable(memDump) {
+				var table = $("<table><tr><th>addr</th><th>val</th><th>symbol/*pointer</th></tr></table>");
+				table.addClass("memory-table");
+				for(var i = 0; i < memDump.length; i++) {
+					var info = memDump[i];
+					var valText = hex(info.val);
+					if(info.symbol.trim() != "") {
+						valText = memLink(info.val, valText);
+						//valText = "<a href='#action=memory&addr=" + info.val + "' class='memory-link' addr='" + info.val + "'>" + valText + "</a>";
+					}
+					var row = $("<tr><td>"+memLink(info.addr, hex(info.addr))+"</td><td>"+valText+"</td><td>"+info.symbol+"</td></tr>");
+					table.append(row);
+				}
+				return table;
+			}
+
+			function viewMemory(addr) {
+				$("#memory-address-input").val(hex(addr));
+				$("#memory-view-memory-button").click();
+			}
+
+			function initMemoryTab() {
+				$("#memory-view-memory-button").click(function() {
+					var addrText = $("#memory-address-input").val();
+					var addr = bnarly.evalExpr(addrText);
+
+					var snapToAllocation = $("#memory-snap-checkbox").is(":checked");
+					var objectSize = null;
+					if(snapToAllocation) {
+						objectSize = bnarly.getObjectSize(addr);
+						var unknownSizeText = (objectSize ? "" + hex(objectSize.size) + " bytes" : "? Unknown");
+						$("#memory-size").text(unknownSizeText);
+
+						if(objectSize) {
+							addr = objectSize.base;
+						}
+					}
+
+					if(!objectSize) {
+						var defaultSizeText = $("#memory-default-dump-size").val();
+						var defaultSize = bnarly.evalExpr(defaultSizeText);
+						objectSize = {
+							base: addr,
+							size: defaultSize
+						};
+					}
+
+					var memoryType = $("#memory-type-select").val();
+					switch(memoryType) {
+						case "pointers":
+							var pointerSize = 4; // TODO - add this to bnarly.js - bnarly.pointerSize()
+							var objectDump = bnarly.dpp(addr, Math.ceil(objectSize.size/pointerSize), true);
+
+							var tableWrapper = $("#memory-table-wrapper");
+							tableWrapper.empty();
+							var table = createMemoryTable(objectDump);
+							tableWrapper.append(table);
+							break;
+						case "dwords":
+							var objectDump = bnarly.dd(addr, Math.ceil(objectSize.size/4), true);
+
+							var tableWrapper = $("#memory-table-wrapper");
+							tableWrapper.empty();
+							var table = createMemoryTable(objectDump);
+							tableWrapper.append(table);
+							break;
+						case "ascii":
+							var dataDump = bnarly.da(addr, true);
+							var tableWrapper = $("#memory-table-wrapper");
+							tableWrapper.empty();
+							var table = createDataTable(dataDump);
+							tableWrapper.append(table);
+							break;
+						case "unicode":
+							var dataDump = bnarly.du(addr, true);
+							var tableWrapper = $("#memory-table-wrapper");
+							tableWrapper.empty();
+							var table = createDataTable(dataDump);
+							tableWrapper.append(table);
+							break;
+					}
+
+				});
+			}
+
+			function initInspectTab() {
+				$("#inspect-button").click(function() {
+					var js = $("#inspect-textarea").val();
+					window.js = js;
+
+					var doHeapTracking = $("#inspect-track-alloc-free").is(":checked");
+					var doDumpMemory = $("#inspect-dump-memory-checkbox").is(":checked");
+
+					if(doHeapTracking) {
+						bnarly.startHeapTracking();
+					}
+
+					childWindow.eval("try { window.resObj = eval(window.opener.js) } catch(e) { ; }");
+
+					if(doHeapTracking) {
+						$("#inspect-heap-tracking-container").show();
+						populateInspectHeapTracking();
+					} else {
+						$("#inspect-heap-tracking-container").hide();
+					}
+
+					if(doDumpMemory) {
+						$("#inspect-memory-dump-container").show();
+						populateInspectDumpMemory();
+					} else {
+						$("#inspect-memory-dump-container").hide();
+					}
+				});
+			}
+
+			function createHeapActionTable(info, additionalKeys) {
+				if(additionalKeys == undefined) { additionalKeys = []; }
+
+				var table = $("<table></table>");
+				table.addClass("memory-table");
+
+				var makeCell = function(name, type) {
+					if(type == undefined) { type = "td"; }
+					return $("<" + type + ">" + name + "</" + type + ">");
+				};
+				var headerRow = $("<tr></tr>");
+				headerRow.append(makeCell("addr", "th"));
+				for(var i = 0; i < additionalKeys.length; i++) {
+					headerRow.append(makeCell(additionalKeys[i], "th"));
+				}
+				headerRow.append(makeCell("symbol/*pointer", "th"));
+				table.append(headerRow);
+
+				for(var addr in info) {
+					var row = $("<tr></tr>");
+					var addrInfo = info[addr];
+					row.append(makeCell(memLink(addrInfo.addr, hex(addrInfo.addr))));
+					for(var i = 0; i < additionalKeys.length; i++) {
+						var val = addrInfo[additionalKeys[i]];
+						if(typeof val == "number") {
+							val = hex(val);
+						}
+						row.append(makeCell(val));
+					}
+					var symbolVal = addrInfo.symbol;
+					if(typeof symbolVal == "number") {
+						symbolVal = hex(symbolVal);
+					}
+					row.append(makeCell(symbolVal));
+					table.append(row);
+				}
+
+				return table;
+			}
+
+			function populateInspectHeapTracking() {
+				var allocFreeInfo = bnarly.stopHeapTracking();
+				var bName = bnarly.getBrowserName();
+
+				var allocFieldsMap = {
+					"MSIE": ["heap", "size"],
+					"Firefox": ["size"]
+				}
+				var allocFields = allocFieldsMap[bName] || [];
+
+				var unFreedAllocsTable = createHeapActionTable(allocFreeInfo.unFreedAllocs, allocFields);
+				var unFreedAllocsWrapper = $("#inspect-heap-tracking-unfreed-allocs-wrapper");
+				unFreedAllocsWrapper.empty();
+				unFreedAllocsWrapper.append(unFreedAllocsTable);
+
+				var freeFieldsMap = {
+					"MSIE": ["heap"],
+					"Firefox": []
+				};
+				var freeFields = freeFieldsMap[bName] || [];
+
+				var unAllocatedFreesTable = createHeapActionTable(allocFreeInfo.unAllocatedFrees, freeFields);
+				var unAllocatedFreesWrapper = $("#inspect-heap-tracking-unallocd-frees-wrapper");
+				unAllocatedFreesWrapper.empty();
+				unAllocatedFreesWrapper.append(unAllocatedFreesTable);
+			}
+
+			function populateInspectDumpMemory() {
+
+				var objectPtr = bnarly.getObjectPtr("resObj", true);
+				bnarly.log("Object ptr at 0n" + objectPtr);
+				var objectSize = bnarly.getObjectSize(objectPtr);
+
+				var unknownSizeText = (objectSize ? "" + hex(objectSize.size) + " bytes" : "? Unknown");
+				$("#inspect-memory-size").text(unknownSizeText);
+
+				if(!objectSize) {
+					var fallbackSizeText = $("#inspect-fallback-size").val();
+					objectSize = {
+						base: objectPtr,
+						size: bnarly.evalExpr(fallbackSizeText)
+					}
+				}
+				var pointerSize = 4; // TODO - add this to bnarly.js - bnarly.pointerSize()
+				var objectDump = bnarly.dpp(objectPtr, Math.ceil(objectSize.size/pointerSize), true);
+
+				var tableWrapper = $("#inspect-memory-table-wrapper");
+				tableWrapper.empty();
+				var table = createMemoryTable(objectDump);
+				tableWrapper.append(table);
+			}
+
+			function initEvalTab() {
+				$("#eval-button").click(function(){
+					var text = $("#eval-input").val();
+					var res = bnarly.evalExpr(text);
+					$("#eval-output").text(res);
+				});
+			}
+
+			function showSetupInfo() {
+				setupSlides.push($(".intro-slide.intro-content"));
+				setupSlides.push($(".intro-slide.new-window-content"));
+				setupSlides.push($(".intro-slide.breakpoints-content"));
+				setupSlides.push($(".intro-slide.prepopulate-cache"));
+
+				$(".setup-back-button").click(function(){slideChange("prev");});
+				$(".setup-next-button").click(function(){slideChange("next");});
+
+				$(".browser-info").text(bnarly.getBrowserName() + " " + bnarly.getBrowserVersion());
+				var symServs = bnarly.getSymbolServerLocations();
+				var breakpoint = bnarly.getWindbgBreakpoint();		
+
+				var symServArray = [];
+				for(var i = 0; i < symServs.length; i++) {
+					symServArray.push("SRV*browser_symbols*" + symServs[i]);
+				}
+				var symServ = ".sympath " + symServArray.join(";");
+
+				$(".browser-breakpoints").text(
+					symServ + "\r\n\r\n" + 
+					bnarly.getWindbgBreakpoint() + "\r\n\r\n" +
+					".suspend_ui 0"
+				);
+
+				slideChange("next");
+			}
+
+			function evalExprWindbg() {
+				var cmd = $("#user_windbg_cmd").val();
+				var res = bnarly.evalExpr(cmd);
+				alert(res);
+			};
+
+			window.onload = function() {
+				showSetupInfo();
+			};
+
+			window.onhashchange = function(e) {
+				var hash = window.location.hash.replace(/^#/, "");
+				var args = hash.split("&");
+				var regex = /^([a-zA-Z]+)=(.*)$/;
+				var argsDict = {};
+				for(var i = 0; i < args.length; i++) {
+					var arg = args[i];
+					var match = regex.exec(arg);
+					if(!match) { continue; }
+					argsDict[match[1]] = match[2];
+				}
+
+				if(!argsDict.action) { return; }
+
+				switch(argsDict.action) {
+					case "memory":
+						if(!argsDict.addr) { return; }
+						viewTab("memory");
+						viewMemory(parseInt(argsDict.addr));
+						break;
+				}
+			}
+		</script>
+
+		<style>
+			.main-content {
+				margin-left: auto;
+				margin-right: auto;
+			}
+
+			.intro-slides {
+				padding: 15px;
+				margin-left: auto;
+				margin-right: auto;
+				border: 2px solid gray;
+				width: 500px;
+				height: 300px;
+				text-align: center;
+				position: relative;
+			}
+
+			.intro-slide {
+				display: none;
+			}
+
+			.intro-slide-buttons {
+				position: absolute;
+				bottom: 0px;
+				text-align: right;
+				padding: 10px;
+				right: 0px;
+			}
+			.browser-breakpoints {
+				width: 300px;
+				height: 75px;
+				margin-top: 15px;
+			}
+			.main-box {
+				display: none;
+				margin-left: auto;
+				margin-right: auto;
+				border: 2px solid gray;
+				position: relative;
+				width: 800px;
+			}
+			.vertical-tabs ul {
+				list-style: none;
+				width: 100px;
+			}
+			.tab {
+				border: 1px solid #c0c0c0;
+				width: 100px;
+				margin-bottom: 5px;
+				padding: 3px;
+				cursor: pointer;
+			}
+			.tab:hover {
+				background-color: #fff0e0;
+			}
+			.selectedTab {
+				background-color: #ffd0a0;
+			}
+			li {
+				list-style: none;
+			}
+			.tab-content {
+				display: none;
+			}
+			.tab-contents {
+				margin-left: 30px;
+				padding: 10px;
+			}
+			.memory-table-wrapper {
+				font-family: "Courier New", Courier;
+				font-size: 12px;
+				width: 600px;
+				overflow-x: scroll;
+			}
+			.memory-table {
+				white-space: nowrap;
+			}
+			.memory-table th {
+				text-align: left;
+			}
+			.waiting-for-connection {
+				font-family: "Courier New", Courier;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	
+	<body>
+		<div class="main-content">
+			<div class="intro-slides">
+				<div class="intro-slide intro-content">
+					Welcome to bNarly!
+				</div>
+
+				<div class="intro-slide new-window-content">
+					You are using bNarly with <span class="browser-info"></span>
+					<br /><br />
+					To keep the UI code separate from the javascript code being debugged, it is
+					recommended that a new window be opened.
+					<br />
+					<br />
+					The file below will be used as the source for the new window. To skip this step, press
+					the next button.
+					<br />
+					<br />
+					<input type="text" id="new-window-src" value="bnarly_spawn.html"></input>
+					<input type="button" id="new-window-open-button" value="OPEN"></input>
+				</div>
+
+				<div class="intro-slide breakpoints-content">
+					Open windbg from a writeable directory and attach to the spawned window (or the main window/tab if you skipped that step).
+					<br />
+					<br />
+					Set the breakpoints below for your browser (<span class="browser-info"></span>):
+
+					<textarea class="browser-breakpoints"></textarea>
+
+					<br />
+					<span class="waiting-for-connection">Waiting for connection...</span>
+					<br />
+					<br />
+
+					<div style="color:red">WARNING</div>
+					Unless you opened a new window and it is in a separate process, <b>DO NOT</b> copy &amp; paste directly to windbg.
+					Paste to some other program (eg notepad) and copy &amp; paste from there to windbg.
+
+				</div>
+
+				<div class="intro-slide prepopulate-cache">
+					Press the button below to prepopulate the bNarly symbol cache:
+					<br />
+					<br />
+					<input type="button" id="prepopulate-button" value="PREPOPULATE"></input>
+				</div>
+
+				<div class="intro-slide-buttons">
+					<input type="button" value="BACK" class="setup-back-button"></input>
+					<input type="button" value="NEXT" class="setup-next-button"></input>
+				</div>
+			</div>
+
+
+
+			<div class="main-box">
+				<table>
+					<tr>
+						<td class="tabs" style="vertical-align: top">
+							<ul class="vertical-tabs">
+								<li class="tab selectedTab" id="inspect">Inspect</li>
+								<li class="tab" id="memory">Memory</li>
+								<li class="tab" id="eval">Eval</li>
+							</ul>
+						</td>
+
+						<td style="vertical-align: top">
+							<div class="tab-contents">
+
+								<div class="tab-content inspect-content">
+									<h2>Inspect</h2>
+									Evaluate the entered javascript below and display the result of the last statement in memory.
+									<br />
+									
+									<textarea style="width:350px" cols="90" rows="5" id="inspect-textarea">var i = new Image();
+i.src = "hello - can you find this string?";
+i</textarea>
+									<br />
+									
+									If the object's size cannot be determined, dump this many bytes:
+									<input type="text" id="inspect-fallback-size" value="0x40"></inspect>
+									<br />
+
+									<h3>Options</h3>
+									<table>
+										<tr><td>Dump memory</td><td><input type="checkbox" id="inspect-dump-memory-checkbox" checked></input></td></tr>
+										<tr><td>Track alloc/free</td><td><input type="checkbox" id="inspect-track-alloc-free" checked></input></td></tr>
+									</table>
+									<br />
+
+									<input type="button" id="inspect-button" value="INSPECT IT"></input>
+									<br />
+									<br />
+									
+									<div id="inspect-heap-tracking-container" style="display:none">
+										<h3>Heap Tracking</h3>
+
+										<div class="inspect-heap-tracking-group">
+											<h4>Unfreed Allocations</h4>
+											<div class="memory-table-wrapper" id="inspect-heap-tracking-unfreed-allocs-wrapper">
+											</div>
+										</div>
+
+										<div class="inspect-heap-tracking-group">
+											<h4>Unallocated Frees</h4>
+											<div class="memory-table-wrapper" id="inspect-heap-tracking-unallocd-frees-wrapper">
+											</div>
+										</div>
+
+										<div class="inspect-heap-tracking-group">
+											<h4>Timeline</h4>
+											<div class="memory-table-wrapper" id="inspect-heap-tracking-timeline-wrapper">
+											</div>
+										</div>
+
+										<h4>Timeline</h4>
+									</div>
+
+									<div id="inspect-memory-dump-container" style="display:none">
+										<h3>Memory Dump</h3>
+
+										Object Size: <span class="memory-size" id="inspect-memory-size">Unknown</span>
+										<br />
+										<br />
+
+										<div class="memory-table-wrapper" id="inspect-memory-table-wrapper">
+											<table id="inspect-memory-table" class="memory-table">
+												<tr>
+													<th>addr</th>
+													<th>val</th>
+													<th>symbol/*pointer</th>
+												</tr>
+											</table>
+										</div>
+									</div>
+								</div>
+
+								<div class="tab-content memory-content">
+									<h2>Memory</h2>
+
+									Address: <input type="text" id="memory-address-input"></input>
+									<br />
+									Default Dump Size: <input type="text" id="memory-default-dump-size" value="0x40"></input>
+									<br />
+									<br />
+
+									<input type="button" id="memory-view-memory-button" value="VIEW MEMORY"></input>
+									<br />
+									<br />
+
+									Object Size: <span class="memory-size" id="memory-size">Unknown</span>
+									<br />
+									<br />
+
+									<select id="memory-type-select">
+										<option value="pointers">pointers</option>
+										<option value="dwords">dwords</option>
+										<option value="qwords">qwords</option>
+										<option value="words">words</option>
+										<option value="bytes">bytes</option>
+										<option value="ascii">ascii</option>
+										<option value="unicode">unicode</option>
+									</select>
+
+									Snap to start of allocation: <input type="checkbox" checked id="memory-snap-checkbox"></input>
+
+									<div class="memory-table-wrapper" id="memory-table-wrapper">
+										<table id="memory-table" class="memory-table">
+											<tr>
+												<th>addr</th>
+												<th>val</th>
+												<th>symbol/*pointer</th>
+											</tr>
+										</table>
+									</div>
+								</div>
+
+								<div class="tab-content eval-content">
+									<h2>Eval</h2>
+
+									? <input type="text" placeholder="something to eval" style="width:200px" id="eval-input"></input>
+									<input type="button" value="EVAL IT" id="eval-button"></input>
+									<br />
+									<textarea id="eval-output" style="width: 200px height: 200px"></textarea>
+								</div>
+							</div>
+						</td>
+					</tr>
+				</table>
+			</div>
+		</div>
+	</body>
+</html>
