@@ -89,6 +89,10 @@ var bnarly = (function() {
 	var EVAL_WINDOW = window;
 	var SHOWED_SYMBOL_ERROR = false;
 	var MEM_STR_SIZE = 0x800000;
+	var DEFAULTS = {
+		"MSIE": "10_x86",
+		"Firefox": "25_x86"
+	};
 	
 	function initMemStr() {
 		mem_str_init = '' +
@@ -118,6 +122,9 @@ var bnarly = (function() {
 		initSymbolCache();
 	}
 
+	/*
+	Set the window that the debugger will be attached to.
+	*/
 	function setMainWindow(win) {
 		EVAL_WINDOW = win;
 		initMemStr();
@@ -125,10 +132,17 @@ var bnarly = (function() {
 
 	var USE_SYMBOL_CACHE = true;
 	var SYMBOL_CACHE = {};
+	/*
+	Set whether a symbol cache should be used
+	*/
 	function setUseSymbolCache(trueFalse) {
 		USE_SYMBOL_CACHE = trueFalse;
 	}
 
+	/*
+	Populate the symbol cache with vftable symbols from "popular" browser
+	modules (eg mshtml!*vftable* and jscript9!*vftable*)
+	*/
 	function populateSymbolCache() {
 		if(!USE_SYMBOL_CACHE) { return; }
 		var popularSymbolModules = {
@@ -163,10 +177,16 @@ var bnarly = (function() {
 	-----------------------------------------------------------
 	*/
 	
+	/*
+	Return the name/family of the browser. Eg: MSIE
+	*/
 	function getBrowserName() {
 		return bInfo.name;
 	}
 
+	/*
+	Return a string that represents the version of the browser. Eg: 10_x86
+	*/
 	function getBrowserVersion() {
 		var majorVersion = bInfo.version.split(".")[0];
 		var type = bInfo.type;
@@ -174,6 +194,10 @@ var bnarly = (function() {
 		return version;
 	}
 
+	/*
+	Return the symbol server locations that should be in `.sympath` in order for
+	bNarly to work correctly.
+	*/
 	function getSymbolServerLocations() {
 		var locations = {
 			"MSIE": ["http://msdl.microsoft.com/download/symbols"],
@@ -222,7 +246,7 @@ var bnarly = (function() {
 		};
 
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["MSIE"]]; }
 		return breakpoint;
 	}
 
@@ -242,7 +266,7 @@ var bnarly = (function() {
 		};
 
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["Firefox"]]; }
 		return breakpoint;
 	}
 	
@@ -279,7 +303,7 @@ var bnarly = (function() {
 		};
 
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["MSIE"]]; }
 		return breakpoint;
 	}
 
@@ -303,12 +327,17 @@ var bnarly = (function() {
 		};
 
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["Firefox"]]; }
 		return breakpoint;
 	}
 	
 	// ----------------------- Main Windbg Breakpoint
 
+	/*
+	Return the breakpoint for the current browser. If a breakpoint for the current
+	version has not been explicitly defined, return the default breakpoint for
+	the browser family.
+	*/
 	function getWindbgBreakpoint() {
 		var handlers = {
 			"Chrome": _getChromeWindbgBreakpoint,
@@ -375,7 +404,7 @@ var bnarly = (function() {
 		};
 		
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["MSIE"]]; }
 		return breakpoint;
 	};
 	
@@ -413,7 +442,7 @@ var bnarly = (function() {
 			'"'].join(" ")
 		}
 		var breakpoint = breakpoints[key];
-		if(!breakpoint) { breakpoint = null; }
+		if(!breakpoint) { breakpoint = breakpoints[DEFAULTS["Firefox"]]; }
 		return breakpoint;
 	};
 	
@@ -444,6 +473,13 @@ var bnarly = (function() {
 	CANDY FUNCTIONS
 	-----------------------------------------------------------
 	*/
+
+	/*
+	Evaluate the given expression and return the result. The result will *always*
+	be a number. This is the same as running the windbg command:
+
+	`? <expression>`
+	*/
 	function evalExpr(expression) {
 		var res = evalRaw("? " + expression);
 		return _getEvalExprInt(res);
@@ -456,7 +492,7 @@ var bnarly = (function() {
 	};
 	
 	/*
-	Run the given shell command without waiting for the created process to exit
+	Run the `cmd` without waiting for the created process to exit
 	*/
 	function shell(cmd) {
 		run('.block { .shell -ci ".echo blah" start ' + cmd + '} ; g');
@@ -464,6 +500,10 @@ var bnarly = (function() {
 
 	var heapAllocBpId = null;
 	var heapFreeBpId = null;
+	/*
+	Begin tracking heap allocs/frees. Retrieve tracked heap events by calling
+	`stopHeapTracking()`
+	*/
 	function startHeapTracking() {
 		var allocBp = getAllocTrackBreakpoint();
 		var freeBp = getFreeTrackBreakpoint();
@@ -590,6 +630,33 @@ var bnarly = (function() {
 		}
 	}
 
+	/*
+	Stop tracking heap allocs/frees. Returns an object of the form:
+
+	```
+	{
+		timeline: [...],
+		unAllocatedFrees: {...},
+		unFreedAllocs: {...}
+	}
+	```
+
+	* `timeline` is an array of heap events, in the order they occurred.
+	* `unAllocatedFrees` is an object with keys being addresses that have been freed but were not allocated after `startHeapTracking()` was called. The values are heap events.
+	* `unFreedAllocs` is an object with keys being addresses that have been allocated and were not freed since `startHeapTracking()` was called. The values are heap events.
+
+	A heap event is of the form:
+
+	```
+	{
+		type: FREE or ALLOC,
+		addr: address,
+		(size: allocation size)?,
+		(heap: heap allocation belongs to)?,
+		(firstPtr: value of poi(addr))?
+	}
+	```
+	*/
 	function stopHeapTracking() {
 		clearBreakpoint(heapAllocBpId);
 		clearBreakpoint(heapFreeBpId);
@@ -609,18 +676,35 @@ var bnarly = (function() {
 			unFreedAllocs: unFreedAllocs
 		};
 	}
-
+	
+	var arrayObjectInstanceVftablePtr = null;
 	/*
-	-----------------------------------------------------------
-	EXTENSION FUNCTIONS
-	-----------------------------------------------------------
+	Return a pointer to the given object. If `isOnlyName` is true, the obj is assumed to be a string
+	and will be evaluated in the window that `setMainWindow` was set to.
 	*/
+	function getObjectPtr(obj, isOnlyObjName) {
+		res = _doCommand(['? @$t0'], true, obj, isOnlyObjName);
+		var ptrVal = _getEvalExprInt(res);
+
+		if(bInfo.name == "MSIE") {
+			if(!arrayObjectInstanceVftablePtr) {
+				arrayObjectInstanceVftablePtr = evalExpr("jscript9!Projection::ArrayObjectInstance::`vftable'");
+			}
+			var firstPoi = poi(ptrVal);
+			if(poi(ptrVal) == arrayObjectInstanceVftablePtr) {
+				// might be different for different browser versions
+				ptrVal = poi(ptrVal + 0x18);
+			}
+		}
+
+		return ptrVal;
+	};
 
 	/*
 	Return the size of the memory allocation referenced by ptr. An
 	object is returned with at least the two members:
 
-		{base: <addr>, size: <size>}
+		`{base: <addr>, size: <size>}`
 
 	More members might be added to the object, depending on which allocator
 	is used.
@@ -817,16 +901,14 @@ var bnarly = (function() {
 	*/
 
 	/*
-	Sets a breakpoint at addr (may also be symbols). Default breakpoint
-	type is bp, may also pass in bu or bm.
+	Sets a breakpoint at `addr` (may also be a symbol). Default breakpoint
+	`type` is `bp`, may also pass in `bu` or `bm`.
 
-	commands argument is an unescaped string of commands. The commands
+	The `commands` argument is an unescaped string of commands. The commands
 	will automatically be escaped.
 
-	Returns the breakpoint id that can be passed to clearBreakpoint to
+	Returns the breakpoint id that can be passed to `clearBreakpoint(bpId)` to
 	remove the breakpoint.
-
-	TODO: Do something else for ba, etc
 	*/
 	function setBreakpoint(addr, commands, type) {
 		if(type == undefined) { type = "bp"; }
@@ -844,7 +926,7 @@ var bnarly = (function() {
 	}
 
 	/*
-	Clear the breakpoint associated with the given breakpoint id
+	Clear the breakpoint associated with `bpId`
 	*/
 	function clearBreakpoint(bpId) {
 		run("bc " + bpId, "g");
@@ -855,25 +937,6 @@ var bnarly = (function() {
 	MEMORY ACCESS FUNCTIONS
 	-----------------------------------------------------------
 	*/
-	
-	var arrayObjectInstanceVftablePtr = null;
-	function getObjectPtr(obj, isOnlyObjName) {
-		res = _doCommand(['? @$t0'], true, obj, isOnlyObjName);
-		var ptrVal = _getEvalExprInt(res);
-
-		if(bInfo.name == "MSIE") {
-			if(!arrayObjectInstanceVftablePtr) {
-				arrayObjectInstanceVftablePtr = evalExpr("jscript9!Projection::ArrayObjectInstance::`vftable'");
-			}
-			var firstPoi = poi(ptrVal);
-			if(poi(ptrVal) == arrayObjectInstanceVftablePtr) {
-				// might be different for different browser versions
-				ptrVal = poi(ptrVal + 0x18);
-			}
-		}
-
-		return ptrVal;
-	};
 	
 	function _ddHelper(output) {
 		var res = [];
@@ -917,6 +980,32 @@ var bnarly = (function() {
 		}
 	}
 
+	/*
+	Return the string referenced by `address`.
+
+	If `brokenUp` is true, an array of objects of the form `{addr:<address>, val:<val>}` will
+	be returned.
+
+	`limit` limits the length of the string. Eg: `da <addr> L?0n<limit>`
+	*/
+	function da(address, brokenUp, limit) {
+		if(brokenUp == undefined) { brokenUp = false; }
+		return _dStringHelper("da", address, brokenUp, limit);
+	}
+
+	/*
+	Return the unicode string referenced by `address`.
+
+	If `brokenUp` is true, an array of objects of the form `{addr:<address>, val:<val>}` will
+	be returned.
+
+	`limit` limits the length of the unicode string. Eg: `du <addr> L?0n<limit>`
+	*/
+	function du(address, brokenUp, limit) {
+		if(brokenUp == undefined) { brokenUp = false; }
+		return _dStringHelper("du", address, brokenUp, limit);
+	}
+
 	function _dStarHelper(command, address, num, symLookup) {
 		var output = evalRaw(command + " /c 1 " + toWAddr(address) + " L?0n" + num);
 		var res = _ddHelper(output);
@@ -946,7 +1035,9 @@ var bnarly = (function() {
 	Return an array of objects containing the dword values and symbols at
 	each address:
 
-	[{addr: <val>, val: <val>, symbol: <val>}, ... ]
+	`[{addr: <val>, val: <val>, symbol: <val>}, ... ]`
+
+	If `symLookup` is true, an attempt will be made to resolve symbols.
 	*/
 	function dd(address, num, symLookup) {
 		return _dStarHelper("dd", address, num, symLookup);
@@ -957,43 +1048,42 @@ var bnarly = (function() {
 	symbols at each address:
 
 	[{addr: <val>, val: <val>, symbol: <val>}, ... ]
+
+	If `symLookup` is true, an attempt will be made to resolve symbols.
 	*/
 	function dp(address, num, symLookup) {
 		return _dStarHelper("dp", address, num, symLookup);
 	}
 
 	/*
-	Return an array of objects containing the values and symbols at each
-	address:
+	Return an array of objects containing the dword-sized values and
+	symbols at each	address:
 
-	[{addr: <val>, val: <val>, symbol: <val>}, ... ]
+	`[{addr: <val>, val: <val>, symbol: <val>}, ... ]`
+
+	If `symLookup` is true, an attempt will be made to resolve symbols. The
+	windbg command `ddp` by default will display the dereferenced pointer and
+	the memory at the resulting location. Any results from `symLookup` will
+	override the symbols from the windbg output of `ddp`.
 	*/
 	function ddp(address, num, symLookup) {
 		return _dStarHelper("ddp", address, num, symLookup);
 	}
 
 	/*
-	Return an array of objects containing the values and symbols at each
-	address:
+	Return an array of objects containing the pointer-sized values and
+	symbols at each	address:
 
-	[{addr: <val>, val: <val>, symbol: <val>}, ... ]
+	`[{addr: <val>, val: <val>, symbol: <val>}, ... ]`
+
+
+	If `symLookup` is true, an attempt will be made to resolve symbols. The
+	windbg command `dpp` by default will display the dereferenced pointer and
+	the memory at the resulting location. Any results from `symLookup` will
+	override the symbols from the windbg output of `dpp`.
 	*/
 	function dpp(address, num, symLookup) {
 		return _dStarHelper("dpp", address, num, symLookup);
-	}
-
-	/*
-	*/
-	function da(address, brokenUp, limit) {
-		if(brokenUp == undefined) { brokenUp = false; }
-		return _dStringHelper("da", address, brokenUp, limit);
-	}
-
-	/*
-	*/
-	function du(address, brokenUp, limit) {
-		if(brokenUp == undefined) { brokenUp = false; }
-		return _dStringHelper("du", address, brokenUp, limit);
 	}
 
 	/*
@@ -1056,28 +1146,36 @@ var bnarly = (function() {
 	}
 
 	/*
-	Return an array of num bytes starting at address
+	Return an array of objects representing `num` bytes starting at `address`.
+
+	Objects are of the form `{addr: <addr>, val: <val>, rep: <rep>}`
 	*/
 	function bytes(address, num) {
 		return _memDumpHelper("db", address, num);
 	};
 	
 	/*
-	Return an array of num words starting at address. Num must be % 2
+	Return an array of objects representing `num` words starting at `address`.
+
+	Objects are of the form `{addr: <addr>, val: <val>, rep: <rep>}`
 	*/
 	function words(address, num) {
 		return _memDumpHelper("dw", address, num);
 	}
 	
 	/*
-	Return an array of num dwords starting at address. Num must be %4
+	Return an array of objects representing `num` dwords starting at `address`.
+
+	Objects are of the form `{addr: <addr>, val: <val>, rep: <rep>}`
 	*/
 	function dwords(address, num) {
 		return _memDumpHelper("dd", address, num);
 	}
 	
 	/*
-	Return an array of num qwords starting at address. Num must be %4
+	Return an array of objects representing `num` qwords starting at `address`.
+
+	Objects are of the form `{addr: <addr>, val: <val>, rep: <rep>}`
 	*/
 	function qwords(address, num) {
 		return _memDumpHelper("dq", address, num);
@@ -1103,25 +1201,37 @@ var bnarly = (function() {
 		}
 	}
 
-	function eb() {
+	/*
+	Overwrite bytes at `addr` with values `val1`, `val2`, ...
+	*/
+	function eb(/*addr, val1, val2, ...*/) {
 		arguments = argsToArray(arguments);
 		_memEditArgsValidator(arguments);
 		_memEditHelper("eb", arguments[0], arguments.slice(1));
 	}
 
-	function ew() {
+	/*
+	Overwrite words at `addr` with values `val1`, `val2`, ...
+	*/
+	function ew(/*addr, val1, val2, ...*/) {
 		arguments = argsToArray(arguments);
 		_memEditArgsValidator(arguments);
 		_memEditHelper("ew", arguments[0], arguments.slice(1));
 	}
 
-	function ed() {
+	/*
+	Overwrite dwords at `addr` with values `val1`, `val2`, ...
+	*/
+	function ed(/*addr, val1, val2, ...*/) {
 		arguments = argsToArray(arguments);
 		_memEditArgsValidator(arguments);
 		_memEditHelper("ed", arguments[0], arguments.slice(1));
 	}
 
-	function eq() {
+	/*
+	Overwrite qwords at `addr` with values `val1`, `val2`, ...
+	*/
+	function eq(/*addr, val1, val2, ...*/) {
 		arguments = argsToArray(arguments);
 		_memEditArgsValidator(arguments);
 		_memEditHelper("eq", arguments[0], arguments.slice(1));
@@ -1134,16 +1244,18 @@ var bnarly = (function() {
 	*/
 	
 	/*
-	Run the given command. Do not return the output
+	Run the given command. Do not return the output. Code execution must be
+	explicitly resumed with `g`.
 	*/
-	function run() {
+	function run(/*cmd1, cmd2, ...*/) {
 		_doCommand(arguments);
 	};
 	
 	/*
-	Run the given commands found in arguments and return the output
+	Run the given commands found in arguments and return the output. Code
+	execution will automatically be resumed.
 	*/
-	function evalRaw() {
+	function evalRaw(/*cmd1, cmd2, ...*/) {
 		return _doCommand(arguments, true);
 	};
 
@@ -1299,15 +1411,9 @@ var bnarly = (function() {
 		----------------------------------------------
 		*/
 		evalExpr: evalExpr,
-		getObjectPtr: getObjectPtr,
 		startHeapTracking: startHeapTracking,
 		stopHeapTracking: stopHeapTracking,
-
-		/*
-		----------------------------------------------
-		EXTENSION FUNCTIONS
-		----------------------------------------------
-		*/
+		getObjectPtr: getObjectPtr,
 		getObjectSize: getObjectSize,
 		
 		/*
