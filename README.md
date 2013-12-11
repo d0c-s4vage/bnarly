@@ -9,13 +9,13 @@ bNarly
 
 bNarly (browser narly) is a browser exploitation/exploration tool. bNarly is essentially a windbg <--> javascript bridge.
 
-Tested Browsers
----------------
+Browser Compatibility
+---------------------
 
-* IE 10, 9?
-* Firefox 25
+bNarly will work on *at least* the following browser versions
 
-The supplied breakpoints will most likely work for more versions, especially with Firefox
+* IE 8,9,10,11
+* Firefox >= 20
 
 windbg/js bridge
 ----------------
