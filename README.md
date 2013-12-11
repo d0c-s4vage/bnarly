@@ -11,13 +11,15 @@ bNarly (browser narly) is a browser exploitation/exploration tool. bNarly is ess
 
 A brief glimpse of bNarly in action can be seen here: http://www.youtube.com/watch?v=7r4A29NwlX4
 
-A few screenshots below:
+A few screenshots:
 
-![bNarly Inspect View - Memory Dump](http://i.imgur.com/gpIgvzC.png)
-
-![bNarly Inspect View - Heap Tracking](http://i.imgur.com/v6Y4mVD.png)
-
-![bNarly Memory Dump View - Unicode](http://i.imgur.com/MOS0Auw.png)
+<a href=http://i.imgur.com/gpIgvzC.png target=_blank alt='bNarly Inspect View - Memory Dump'>
+<img src=http://i.imgur.com/gpIgvzC.png width='200px' />
+</a><a href=http://i.imgur.com/v6Y4mVD.png target=_blank alt='bNarly Inspect View - Heap Tracking'>
+<img src=http://i.imgur.com/v6Y4mVD.png width='200px' />
+</a><a href=http://i.imgur.com/MOS0Auw.png target=_blank alt='bNarly Memory Dump View - Unicode'>
+<img src=http://i.imgur.com/MOS0Auw.png width='200px' />
+</a>
 
 Browser Compatibility
 ---------------------
