@@ -10,6 +10,10 @@ var bnarly = (function() {
 			"version": M[1],
 			"type": (window.navigator.platform.indexOf("64") == -1 ? "x86" : "x64")
 		};
+		// stupid userAgent change with IE11
+		if(M["name"] == "Netscape" && window.navigator.userAgent.indexOf("Trident") != -1) {
+			M["name"] = "MSIE";
+		}
 		return M;
 	})();
 
@@ -17,7 +21,7 @@ var bnarly = (function() {
 		String.prototype.trim = function () {  
 			return this.replace(/^\s+|\s+$/g,'');  
 		};  
-	} 
+	}
 
 	if (!Array.prototype.indexOf)
 	{
@@ -96,17 +100,17 @@ var bnarly = (function() {
 	
 	function initMemStr() {
 		mem_str_init = '' +
-			'var mem_str = "";' +
-			'mem_str_size = ' + MEM_STR_SIZE + ';' +
+			'window.mem_str = "";' +
+			'window.mem_str_size = ' + MEM_STR_SIZE + ';' +
 			'(function() {' +
-				'mem_str = "A";' +
-				'while(mem_str.length < mem_str_size/2) {' +
-					'mem_str += mem_str;' +
+				'window.mem_str = "A";' +
+				'while(window.mem_str.length < window.mem_str_size/2) {' +
+					'window.mem_str += window.mem_str;' +
 				'}' +
-				'mem_str = "BNARLY_MEMORY_STRING" + mem_str;' +
+				'window.mem_str = "BNARLY_MEMORY_STRING" + window.mem_str;' +
 				(bInfo.name == "MSIE" ?
-					"mem_str = mem_str.substring(0, mem_str_size/2);" :
-					'mem_str = ["",mem_str.substring(0, mem_str_size/2)].join("");'
+					"window.mem_str = window.mem_str.substring(0, window.mem_str_size/2);" :
+					'window.mem_str = ["",window.mem_str.substring(0, window.mem_str_size/2)].join("");'
 				) +
 			'})();'
 		EVAL_WINDOW.eval(mem_str_init);
@@ -146,10 +150,19 @@ var bnarly = (function() {
 	function populateSymbolCache() {
 		if(!USE_SYMBOL_CACHE) { return; }
 		var popularSymbolModules = {
-			"MSIE": ["mshtml", "jscript9"],
-			"Firefox": ["xul"]
+			"MSIE": {
+				"default": ["mshtml", "jscript9"],
+				"8_x86": ["mshtml", "jscript"]
+			},
+			"Firefox": {
+				"default": ["xul"]
+			}
 		};
-		var mods = popularSymbolModules[bInfo.name];
+		var modChoices = popularSymbolModules[bInfo.name];
+		var mods = modChoices[getBrowserVersion()];
+		if(mods == undefined) {
+			mods = modChoices["default"];
+		}
 
 		for(var i = 0; i < mods.length; i++) {
 			var mod = mods[i];
@@ -367,6 +380,35 @@ var bnarly = (function() {
 		@$t0 will be set to the fourth argument, if a fourth argument exists
 		*/
 		var breakpoints = {
+			"11_x86": ['bu jscript9!Js::Math::Min "',
+				// evaluate windbg commands
+				'.if(poi(esp+10) == 0n222223) {',
+					// if a fourth argument was passed in, save its pointer in @$t0
+					'.if((poi(esp+8) & 0xff) > 4) {',
+						'r @$t0 = poi(esp+1c)',
+					'} ;',
+
+					// write windbg commands found in second parameter to cmd_to_exec.txt
+					'.writemem cmd_to_exec.txt poi(poi(esp+14)+c) L?(poi(poi(esp+14)+8)*2) ;',
+
+					// execute windbg commands
+					'$$><cmd_to_exec.txt ;',
+
+					// read the output from executed commands back into the third argument (a string)
+					'.if((poi(esp+8) & 0xff) > 3) {',
+						'.readmem output.txt poi(poi(esp+18)+c) L?' + toWAddr(MEM_STR_SIZE) + ' ;',
+						'g',
+					'}',
+
+				// simple logging
+				'} .elsif(poi(esp+10) == 0n444445) {',
+					'.printf \\"%mu\\\\n\\", poi(poi(esp+14)+c) ;',
+					'g',
+				'} .else {',
+					'g',
+				'}',
+			'"'].join(" "),
+
 			"10_x86": ['bu jscript9!Js::Math::Min "',
 				// evaluate windbg commands
 				'.if(poi(esp+10) == 0n222223) {',
@@ -397,10 +439,101 @@ var bnarly = (function() {
 			'"'].join(" "),
 			
 			// this will happen with TabProcGrowth=0 on x64 systems
-			"10_x64": 'bu jscript9!Js::Math::Min "r @$t0=(@$t0 & @$t0) ; .writemem cmd_to_exec.txt poi(poi(esp+20)+18) L?(poi(poi(esp+20)+10)*2) ; $$><cmd_to_exec.txt ; .if((poi(esp+10) & 0xff) > 2) { .readmem output.txt poi(poi(esp+28)+18) ; g }"',
+			// "10_x64": TODO
 			
-			"9_x86": 'bu jscript9!Js::Math::Min "r @$t0=(@$t0 & @$t0) ; .writemem cmd_to_exec.txt poi(poi(esp+10)+c) L?(poi(poi(esp+10)+8)*2) ; $$><cmd_to_exec.txt ; .if((poi(esp+8) & 0xff) > 2) { .readmem output.txt poi(poi(esp+14)+c) ; g }"',
-			"9_x64": 'bu jscript9!Js::Math::Min "r @$t0=(@$t0 & @$t0) ; .writemem cmd_to_exec.txt poi(poi(esp+20)+18) L?(poi(poi(esp+20)+10)*2) ; $$><cmd_to_exec.txt ; .if((poi(esp+10) & 0xff) > 2) { .readmem output.txt poi(poi(esp+28)+18) ; g }"',
+			"9_x86": ['bu jscript9!Js::Math::Min "',
+				// evaluate windbg commands
+				'.if(poi(esp+10) == 0n222223) {',
+					// if a fourth argument was passed in, save its pointer in @$t0
+					'.if((poi(esp+8) & 0xff) > 4) {',
+						'r @$t0 = poi(esp+1c)', // TODO
+					'} ;',
+
+					// write windbg commands found in second parameter to cmd_to_exec.txt
+					'.writemem cmd_to_exec.txt poi(poi(esp+14)+c) L?(poi(poi(esp+14)+8)*2) ;',
+
+					// execute windbg commands
+					'$$><cmd_to_exec.txt ;',
+
+					// read the output from executed commands back into the third argument (a string)
+					'.if((poi(esp+8) & 0xff) > 3) {',
+						'.readmem output.txt poi(poi(esp+18)+c) L?' + toWAddr(MEM_STR_SIZE) + ' ;',
+						'g',
+					'}',
+
+				// simple logging
+				'} .elsif(poi(esp+10) == 0n444445) {',
+					'.printf \\"%mu\\\\n\\", poi(poi(esp+14)+c) ;',
+					'g',
+				'} .else {',
+					'g',
+				'}',
+			'"'].join(" "),
+
+			// this will happen with TabProcGrowth=0 on x64 systems
+			//"9_x64": TODO
+
+			"8_x86": ['r @$t7 = 0 ;', 'bu jscript!JsMin "',
+				// args are pushed from right to left
+				// poi(esp+10) == argcount
+				// poi(esp+14) == args array. Each item in array is size 0x10, with val at +8
+				// last element in array (first argument to Math.min) is:
+				
+				// ARG ARRAY BASE
+				'r @$t1 = poi(esp+14)+8 ;',
+				// arg count
+				'r @$t2 = poi(esp+10) & 0xff ;',
+				// first arg
+				'r @$t3 = poi(@$t1+((@$t2-1)*10)) ;',
+
+				// stupid hack to get a reference to the mem_str before it gets wiped
+				// off the stack
+				'.if(@$t7 == 0) {',
+					'r @$t7 = poi(esp-0x22a4)',
+				'} ;',
+
+				'.if(@$t2 < 2) {',
+					'g',
+				'} .else {',
+					// evaluate windbg commands
+					'.if(@$t3 == 0n111111) {',
+						// if a fourth argument was passed in, save its pointer in @$t0
+						'.if(@$t2 > 3) {',
+							'r @$t0 = poi(poi(@$t1+((@$t2-4)*10))+8)',
+						'} ;',
+
+						// write windbg commands found in second parameter to cmd_to_exec.txt
+						'.writemem cmd_to_exec.txt poi(poi(@$t1+((@$t2-2)*10))+8) L?poi(poi(poi(@$t1+((@$t2-2)*10))+8)-4) ;',
+
+						// execute windbg commands
+						'$$><cmd_to_exec.txt ;',
+
+						// read the output from executed commands back into the third argument (a string)
+						'.if(@$t2 > 2) {',
+							// not sure of the specifics on this, but I think this string is just a copy
+							// and not the original string.
+							//'.readmem output.txt poi(poi(@$t1+((@$t2-3)*10))+8) L?' + toWAddr(MEM_STR_SIZE) + ' ;',
+							//
+							// the only other BNARLY_MEMORY_STRING can be found at poi(esp-0x22a4) 
+							// UNTIL IT GETS WIPED OFF THE STACK!
+							//'.readmem output.txt poi(esp-0x22a4) L?' + toWAddr(MEM_STR_SIZE) + ' ;',
+							//
+							// use @$t7 instead :^)
+							'.readmem output.txt @$t7 L?' + toWAddr(MEM_STR_SIZE) + ' ;',
+							'g',
+						'}',
+
+					// simple logging
+					'} .elsif(@$t3 == 0n222222) {',
+						'.printf \\"%mu\\\\n\\", poi(poi(@$t1+((@$t2-2)*10))+8) ;',
+						'g',
+					'} .else {',
+						'g',
+					'}',
+				'}',
+			'"'].join(" "),
+
+			//"8_x64": TODO
 		};
 		
 		var breakpoint = breakpoints[key];
@@ -687,13 +820,40 @@ var bnarly = (function() {
 		var ptrVal = _getEvalExprInt(res);
 
 		if(bInfo.name == "MSIE") {
-			if(!arrayObjectInstanceVftablePtr) {
-				arrayObjectInstanceVftablePtr = evalExpr("jscript9!Projection::ArrayObjectInstance::`vftable'");
+			var wrapperType = {
+				"default": {
+					symbol: "jscript9!Projection::ArrayObjectInstance::`vftable'",
+					offset: 0x18
+				},
+				"9_x86": {
+					symbol: "jscript9!Js::CustomExternalObject::`vftable'",
+					offset: 0x14
+				},
+				"8_x86": {
+					symbol: "mshtml!s_apfnTrackerTearoffVtable",
+					offset: 0xc
+				}
 			}
+
+			var symbolInfo = wrapperType[getBrowserVersion()];
+			if(symbolInfo == undefined) {
+				symbolInfo = wrapperType["default"];
+			}
+
+			if(!arrayObjectInstanceVftablePtr) {
+				arrayObjectInstanceVftablePtr = evalExpr(symbolInfo.symbol);
+			}
+
 			var firstPoi = poi(ptrVal);
 			if(poi(ptrVal) == arrayObjectInstanceVftablePtr) {
 				// might be different for different browser versions
-				ptrVal = poi(ptrVal + 0x18);
+				ptrVal = poi(ptrVal + symbolInfo.offset);
+			}
+		} else if(bInfo.name == "Firefox") {
+			var firstPtrs = dpp(ptrVal, 5, true);
+			if(firstPtrs[1].symbol.toLowerCase().indexOf("class") != -1 &&
+					firstPtrs[4].symbol.indexOf("vftable") != -1) {
+				ptrVal = firstPtrs[4].val;
 			}
 		}
 
@@ -1310,12 +1470,12 @@ var bnarly = (function() {
 		if(return_output) {
 			if(fourth_arg) {
 				if(isOnlyObjName) {
-					to_eval += 'Math.min(111111, w.commands, mem_str, ' + fourth_arg + ')';
+					to_eval += 'Math.min(111111, w.commands, window.mem_str, ' + fourth_arg + ')';
 				} else {
-					to_eval += 'Math.min(111111, w.commands, mem_str, w.fourth_arg)';
+					to_eval += 'Math.min(111111, w.commands, window.mem_str, w.fourth_arg)';
 				}
 			} else {
-				to_eval += 'Math.min(111111, w.commands, mem_str);';
+				to_eval += 'Math.min(111111, w.commands, window.mem_str);';
 			}
 			EVAL_WINDOW.eval(to_eval);
 			return _filterJunkFromMemStr(EVAL_WINDOW.mem_str);

@@ -96,14 +96,16 @@
 
 			function handleCurrSlideSetup() {
 				$("#prepopulate-button").click(function() {
+					$("#prepopulate-status").text("This may take a few seconds...");
 					bnarly.populateSymbolCache();
+					$("#prepopulate-status").text("DONE");
 				});
 			}
 
 			function handleNewWindowSetup() {
 				$("#new-window-open-button").click(function() {
 					var newWindowSrc = $("#new-window-src").val();
-					childWindow = window.open(newWindowSrc, "BNARLY SPAWN", "width=10,height=10");
+					childWindow = window.open(newWindowSrc, "", "width=10,height=10");
 					bnarly.setMainWindow(childWindow);
 				});
 			}
@@ -249,7 +251,7 @@
 						bnarly.startHeapTracking();
 					}
 
-					childWindow.eval("try { window.resObj = eval(window.opener.js) } catch(e) { ; }");
+					childWindow.eval("window.resObj = eval(window.opener ? window.opener.js : window.js);");
 
 					if(doHeapTracking) {
 						$("#inspect-heap-tracking-container").show();
@@ -562,6 +564,8 @@
 					<br />
 					<br />
 					<input type="button" id="prepopulate-button" value="PREPOPULATE"></input>
+					<br />
+					<div id="prepopulate-status"></div>
 				</div>
 
 				<div class="intro-slide-buttons">
