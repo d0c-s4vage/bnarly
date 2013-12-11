@@ -9,7 +9,15 @@ bNarly
 
 bNarly (browser narly) is a browser exploitation/exploration tool. bNarly is essentially a windbg <--> javascript bridge.
 
-A brief overview of its use can be seen here: http://www.youtube.com/watch?v=7r4A29NwlX4
+A brief glimpse of bNarly in action can be seen here: http://www.youtube.com/watch?v=7r4A29NwlX4
+
+A few screenshots below:
+
+![bNarly Inspect View - Memory Dump](http://i.imgur.com/gpIgvzC.png)
+
+![bNarly Inspect View - Heap Tracking](http://i.imgur.com/v6Y4mVD.png)
+
+![bNarly Memory Dump View - Unicode](http://i.imgur.com/MOS0Auw.png)
 
 Browser Compatibility
 ---------------------
